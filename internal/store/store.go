@@ -1,13 +1,23 @@
 package store
-import("database/sql";"fmt";"os";"path/filepath";"time";_ "modernc.org/sqlite")
-type DB struct{*sql.DB}
-type Rule struct{ID int64 `json:"id"`;Name string `json:"name"`;SourceURL string `json:"source_url"`;Condition string `json:"condition"`;WebhookURL string `json:"webhook_url"`;Enabled bool `json:"enabled"`;LastFired *string `json:"last_fired"`;FireCount int `json:"fire_count"`;CreatedAt time.Time `json:"created_at"`}
-type FireEvent struct{ID int64 `json:"id"`;RuleID int64 `json:"rule_id"`;Payload string `json:"payload"`;FiredAt time.Time `json:"fired_at"`}
-func Open(d string)(*DB,error){os.MkdirAll(d,0755);dsn:=filepath.Join(d,"signalman.db")+"?_journal_mode=WAL&_busy_timeout=5000";db,err:=sql.Open("sqlite",dsn);if err!=nil{return nil,fmt.Errorf("open: %w",err)};db.SetMaxOpenConns(1);migrate(db);return &DB{db},nil}
-func migrate(db *sql.DB){db.Exec(`CREATE TABLE IF NOT EXISTS rules(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,source_url TEXT NOT NULL,condition TEXT DEFAULT '',webhook_url TEXT NOT NULL,enabled INTEGER DEFAULT 1,last_fired TEXT,fire_count INTEGER DEFAULT 0,created_at DATETIME DEFAULT CURRENT_TIMESTAMP);CREATE TABLE IF NOT EXISTS fire_events(id INTEGER PRIMARY KEY AUTOINCREMENT,rule_id INTEGER NOT NULL,payload TEXT DEFAULT '',fired_at DATETIME DEFAULT CURRENT_TIMESTAMP)`)}
-func(db *DB)Create(r *Rule)error{en:=1;if !r.Enabled{en=0};res,err:=db.Exec(`INSERT INTO rules(name,source_url,condition,webhook_url,enabled)VALUES(?,?,?,?,?)`,r.Name,r.SourceURL,r.Condition,r.WebhookURL,en);if err!=nil{return err};r.ID,_=res.LastInsertId();return nil}
-func(db *DB)List()([]Rule,error){rows,_:=db.Query(`SELECT id,name,source_url,condition,webhook_url,enabled,last_fired,fire_count,created_at FROM rules ORDER BY name`);defer rows.Close();var out[]Rule;for rows.Next(){var r Rule;var en int;rows.Scan(&r.ID,&r.Name,&r.SourceURL,&r.Condition,&r.WebhookURL,&en,&r.LastFired,&r.FireCount,&r.CreatedAt);r.Enabled=en==1;out=append(out,r)};return out,nil}
-func(db *DB)RecordFire(ruleID int64,payload string){db.Exec(`INSERT INTO fire_events(rule_id,payload)VALUES(?,?)`,ruleID,payload);db.Exec(`UPDATE rules SET last_fired=CURRENT_TIMESTAMP,fire_count=fire_count+1 WHERE id=?`,ruleID)}
-func(db *DB)Toggle(id int64){db.Exec(`UPDATE rules SET enabled=1-enabled WHERE id=?`,id)}
-func(db *DB)Delete(id int64){db.Exec(`DELETE FROM fire_events WHERE rule_id=?`,id);db.Exec(`DELETE FROM rules WHERE id=?`,id)}
-func(db *DB)Stats()(map[string]interface{},error){var rules,fires int;db.QueryRow(`SELECT COUNT(*) FROM rules WHERE enabled=1`).Scan(&rules);db.QueryRow(`SELECT COUNT(*) FROM fire_events`).Scan(&fires);return map[string]interface{}{"active_rules":rules,"total_fires":fires},nil}
+import ("database/sql";"fmt";"os";"path/filepath";"time";_ "modernc.org/sqlite")
+type DB struct{db *sql.DB}
+type Item struct{
+	ID string `json:"id"`
+	Name string `json:"name"`
+	Description string `json:"description"`
+	Status string `json:"status"`
+	Category string `json:"category"`
+	Tags string `json:"tags"`
+	CreatedAt string `json:"created_at"`
+}
+func Open(d string)(*DB,error){if err:=os.MkdirAll(d,0755);err!=nil{return nil,err};db,err:=sql.Open("sqlite",filepath.Join(d,"signalman.db")+"?_journal_mode=WAL&_busy_timeout=5000");if err!=nil{return nil,err}
+db.Exec(`CREATE TABLE IF NOT EXISTS items(id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT DEFAULT '',status TEXT DEFAULT 'active',category TEXT DEFAULT '',tags TEXT DEFAULT '',created_at TEXT DEFAULT(datetime('now')))`)
+return &DB{db:db},nil}
+func(d *DB)Close()error{return d.db.Close()}
+func genID()string{return fmt.Sprintf("%d",time.Now().UnixNano())}
+func now()string{return time.Now().UTC().Format(time.RFC3339)}
+func(d *DB)Create(e *Item)error{e.ID=genID();e.CreatedAt=now();_,err:=d.db.Exec(`INSERT INTO items(id,name,description,status,category,tags,created_at)VALUES(?,?,?,?,?,?,?)`,e.ID,e.Name,e.Description,e.Status,e.Category,e.Tags,e.CreatedAt);return err}
+func(d *DB)Get(id string)*Item{var e Item;if d.db.QueryRow(`SELECT id,name,description,status,category,tags,created_at FROM items WHERE id=?`,id).Scan(&e.ID,&e.Name,&e.Description,&e.Status,&e.Category,&e.Tags,&e.CreatedAt)!=nil{return nil};return &e}
+func(d *DB)List()[]Item{rows,_:=d.db.Query(`SELECT id,name,description,status,category,tags,created_at FROM items ORDER BY created_at DESC`);if rows==nil{return nil};defer rows.Close();var o []Item;for rows.Next(){var e Item;rows.Scan(&e.ID,&e.Name,&e.Description,&e.Status,&e.Category,&e.Tags,&e.CreatedAt);o=append(o,e)};return o}
+func(d *DB)Delete(id string)error{_,err:=d.db.Exec(`DELETE FROM items WHERE id=?`,id);return err}
+func(d *DB)Count()int{var n int;d.db.QueryRow(`SELECT COUNT(*) FROM items`).Scan(&n);return n}
