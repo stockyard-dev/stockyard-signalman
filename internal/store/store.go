@@ -23,5 +23,26 @@ func now()string{return time.Now().UTC().Format(time.RFC3339)}
 func(d *DB)Create(e *AlertRule)error{e.ID=genID();e.CreatedAt=now();_,err:=d.db.Exec(`INSERT INTO alert_rules(id,name,condition,threshold,channel,target,enabled,fire_count,last_fired_at,cooldown,created_at)VALUES(?,?,?,?,?,?,?,?,?,?,?)`,e.ID,e.Name,e.Condition,e.Threshold,e.Channel,e.Target,e.Enabled,e.FireCount,e.LastFiredAt,e.Cooldown,e.CreatedAt);return err}
 func(d *DB)Get(id string)*AlertRule{var e AlertRule;if d.db.QueryRow(`SELECT id,name,condition,threshold,channel,target,enabled,fire_count,last_fired_at,cooldown,created_at FROM alert_rules WHERE id=?`,id).Scan(&e.ID,&e.Name,&e.Condition,&e.Threshold,&e.Channel,&e.Target,&e.Enabled,&e.FireCount,&e.LastFiredAt,&e.Cooldown,&e.CreatedAt)!=nil{return nil};return &e}
 func(d *DB)List()[]AlertRule{rows,_:=d.db.Query(`SELECT id,name,condition,threshold,channel,target,enabled,fire_count,last_fired_at,cooldown,created_at FROM alert_rules ORDER BY created_at DESC`);if rows==nil{return nil};defer rows.Close();var o []AlertRule;for rows.Next(){var e AlertRule;rows.Scan(&e.ID,&e.Name,&e.Condition,&e.Threshold,&e.Channel,&e.Target,&e.Enabled,&e.FireCount,&e.LastFiredAt,&e.Cooldown,&e.CreatedAt);o=append(o,e)};return o}
+func(d *DB)Update(e *AlertRule)error{_,err:=d.db.Exec(`UPDATE alert_rules SET name=?,condition=?,threshold=?,channel=?,target=?,enabled=?,fire_count=?,last_fired_at=?,cooldown=? WHERE id=?`,e.Name,e.Condition,e.Threshold,e.Channel,e.Target,e.Enabled,e.FireCount,e.LastFiredAt,e.Cooldown,e.ID);return err}
 func(d *DB)Delete(id string)error{_,err:=d.db.Exec(`DELETE FROM alert_rules WHERE id=?`,id);return err}
 func(d *DB)Count()int{var n int;d.db.QueryRow(`SELECT COUNT(*) FROM alert_rules`).Scan(&n);return n}
+
+func(d *DB)Search(q string, filters map[string]string)[]AlertRule{
+    where:="1=1"
+    args:=[]any{}
+    if q!=""{
+        where+=" AND (name LIKE ?)"
+        args=append(args,"%"+q+"%");
+    }
+    if v,ok:=filters["condition"];ok&&v!=""{where+=" AND condition=?";args=append(args,v)}
+    if v,ok:=filters["channel"];ok&&v!=""{where+=" AND channel=?";args=append(args,v)}
+    if v,ok:=filters["enabled"];ok&&v!=""{where+=" AND enabled=?";args=append(args,v)}
+    rows,_:=d.db.Query(`SELECT id,name,condition,threshold,channel,target,enabled,fire_count,last_fired_at,cooldown,created_at FROM alert_rules WHERE `+where+` ORDER BY created_at DESC`,args...)
+    if rows==nil{return nil};defer rows.Close()
+    var o []AlertRule;for rows.Next(){var e AlertRule;rows.Scan(&e.ID,&e.Name,&e.Condition,&e.Threshold,&e.Channel,&e.Target,&e.Enabled,&e.FireCount,&e.LastFiredAt,&e.Cooldown,&e.CreatedAt);o=append(o,e)};return o
+}
+
+func(d *DB)Stats()map[string]any{
+    m:=map[string]any{"total":d.Count()}
+    return m
+}
