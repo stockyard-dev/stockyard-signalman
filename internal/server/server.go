@@ -36,6 +36,7 @@ patch.Condition=existing.Condition};if patch.Channel==""{
 patch.Channel=existing.Channel};if patch.Target==""{
 patch.Target=existing.Target};if patch.LastFiredAt==""{
 patch.LastFiredAt=existing.LastFiredAt}
+    if patch.Threshold==0{patch.Threshold=existing.Threshold};if patch.Enabled==0{patch.Enabled=existing.Enabled};if patch.FireCount==0{patch.FireCount=existing.FireCount};if patch.Cooldown==0{patch.Cooldown=existing.Cooldown}
     s.db.Update(&patch);wj(w,200,s.db.Get(patch.ID))
 }
 func(s *Server)del(w http.ResponseWriter,r *http.Request){s.db.Delete(r.PathValue("id"));wj(w,200,map[string]string{"deleted":"ok"})}
